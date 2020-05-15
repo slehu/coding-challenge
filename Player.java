@@ -20,6 +20,7 @@ class Player {
         Map<Integer, Point> mesPacs = new HashMap<Integer, Point>();
         for (int i = 0; i < height; i++) {
             String row = in.nextLine(); // one line of the grid: space " " is floor, pound "#" is wall
+            plateau.ajouterSol(row, i);
         }
 
         // game loop
@@ -71,6 +72,7 @@ class Player {
             List<String> actions = new ArrayList<String>();
             for (Pac p : plateau.getPacs()) {
                 if (p.mine) {
+                    plateau.sol.put(p.position, true);
                     if (visiblePelletCount == 0 && p.position.distance(new Point(width / 2, height / 2)) < 2) {
                         destinations.put(p.numero, new Pastille(0,0,1));
                     } else {
@@ -98,14 +100,18 @@ class Player {
                             }
                         }
                         if (destinations.get(p.numero) == null) {
-                            System.err.println("Boucle pour numero " + p.numero);
+                            List<Pastille> proches = new ArrayList<Pastille>();
                         // parcours pastilles sinon
                             for (Pastille pastille : plateau.getPastilles()) {
                                 double distanceTemp = position.distance(pastille.getPosition());
-                                if (distanceTemp < distance && !contientDestination(destinations, pastille)) {
+                                if (distanceTemp == distance && pastille.getPoints() == 10 && !contientDestination(destinations, pastille)) {
+                                    destinations.put(p.numero, pastille);
+                                } else if (distanceTemp < distance && !contientDestination(destinations, pastille)) {
+                                    if (p.speedTurnsLeft > 0 && distanceTemp < 2) {
+                                        proches.add(pastille);
+                                        continue;
+                                    }
                                     Point pointTemporaire = plateau.positionsPrecedentes.get(p.numero);
-                                    if (pointTemporaire != null)
-                                        System.err.println(pointTemporaire.toString() + " - " + p.position.toString());
                                     if (!p.position.equals(pointTemporaire)) { 
                                         if (!autrePacPlusPres(mesPacs, p.numero, distanceTemp, pastille.getPosition())) {
                                             destinations.put(p.numero, pastille);
@@ -121,9 +127,34 @@ class Player {
                                     }
                                 }
                             }
+                            if (destinations.get(p.numero) == null || (destinations.get(p.numero).getPosition().distance(p.position) > 4 && p.speedTurnsLeft > 0)) {
+                                if (!proches.isEmpty()) {
+                                    destinations.put(p.numero, proches.get(0));
+                                }
+                            }
                         }
+                        Point pointTemp = plateau.destinationsPrecedentes.get(p.numero);
+                        if (destinations.get(p.numero) == null && pointTemp != null && pointTemp.equals(new Point(0,0))) {
+                            System.err.println("Deplacement vers 0-0");
+                            destinations.put(p.numero, new Pastille(0,0,1));
+                        }
+                        
+                        if (destinations.get(p.numero) == null) {
+                            Point point = plateau.trouverCasePlusProcheNonVisitee(p.position);
+                            if (point != null) {
+                                destinations.put(p.numero, new Pastille((int)point.getX(), (int)point.getY(), 1));
+                            }
+                        }
+
+                        if (destinations.get(p.numero) != null && p.position.equals(plateau.positionsPrecedentes.get(p.numero))) {
+                            if (p.cooldown == 0) {
+                                actions.add("SWITCH " + p.numero + " " + p.modifierType(p));
+                                destinations.put(p.numero, defaut);
+                            }
+                        }
+                        
                         plateau.positionsPrecedentes.put(p.numero, p.position);
-                        if (destinations.get(p.numero) != null && !defaut.equals(destinations.get(p.numero)) && p.position.distance(destinations.get(p.numero).getPosition()) > 4){
+                        if (destinations.get(p.numero) != null && !defaut.equals(destinations.get(p.numero))){
                             if (p.cooldown == 0) {
                                 actions.add("SPEED " + p.numero);
                                 destinations.put(p.numero, defaut);
@@ -187,12 +218,14 @@ class Plateau
     List<Pac> pacs;
     Map<Integer, Point> positionsPrecedentes;
     Map<Integer, Point> destinationsPrecedentes;
+    Map<Point, Boolean> sol;
 
     public Plateau() {
         pastilles = new ArrayList<Pastille>();
         pacs = new ArrayList<Pac>();
         positionsPrecedentes = new HashMap<Integer, Point>();
         destinationsPrecedentes = new HashMap<Integer, Point>();
+        sol = new HashMap<Point, Boolean>();
     }
 
     public List<Pastille> getPastilles() {
@@ -201,6 +234,28 @@ class Plateau
 
     public List<Pac> getPacs() {
         return pacs;
+    }
+
+    public void ajouterSol(String str, int numeroLigne) {
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == ' ') {
+                sol.put(new Point(i, numeroLigne), false);
+            }
+        }
+    }
+
+    public Point trouverCasePlusProcheNonVisitee(Point p) {
+        double distance = 100;
+        Point temp = null;
+        for (Point point : sol.keySet()) {
+            if (sol.get(point) == false) {
+                if (point.distance(p) < distance) {
+                    temp = point;
+                    distance = point.distance(p);
+                }
+            }
+        }
+        return temp;
     }
 
 }
@@ -245,6 +300,7 @@ class Pac
         }
         return retour;
     }
+    
 
 }
 
